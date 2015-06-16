@@ -1,3 +1,4 @@
+[![Gem Version](https://badge.fury.io/rb/chef-zero-scheduled-task.svg)](http://badge.fury.io/rb/chef-zero-scheduled-task)
 # Chef::Zero::Scheduled::Task
 
 TODO: Write a gem description
