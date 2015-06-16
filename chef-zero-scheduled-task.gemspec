@@ -10,7 +10,7 @@ Gem::Specification.new do |spec|
   spec.email         = ["steven.murawski@gmail.com"]
   spec.summary       = "Test-Kitchen Provisioner that runs Chef Zero in a Scheduled Task"
   spec.description   = "Test-Kitchen Provisioner that runs Chef Zero in a Scheduled Task"
-  spec.homepage      = ""
+  spec.homepage      = "https://github.com/smurawski/chef-zero-scheduled-task"
   spec.license       = "Apache 2"
 
   spec.files         = `git ls-files -z`.split("\x0")
