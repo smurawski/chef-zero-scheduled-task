@@ -36,10 +36,11 @@ module Kitchen
       end
 
       def init_command
+        resolve_username_and_password
         wrap_shell_code( <<-EOH
           $cmd_path = "#{remote_path_join(config[:root_path], "chef-client-script.ps1")}"
           $cmd_line = $executioncontext.invokecommand.expandstring("powershell -executionpolicy unrestricted -File $cmd_path")
-          schtasks /create /tn "chef-tk" /ru #{@instance.transport[:username]} /rp #{@instance.transport[:password]} /sc daily /st 00:00 /f /tr "$cmd_line"
+          schtasks /create /tn "chef-tk" /ru #{@task_username} /rp #{@task_password} /sc daily /st 00:00 /f /tr "$cmd_line"
         EOH
         )
       end
@@ -77,6 +78,18 @@ module Kitchen
       end
 
       private
+
+      def resolve_username_and_password
+        local_state_file = @instance.diagnose[:state_file]
+        if local_state_file.key?(:password)
+          @task_username = local_state_file[:username]
+          @task_password = local_state_file[:password]
+        else
+          @task_username = @instance.transport[:username]
+          @task_password = @instance.transport[:password]
+        end
+
+      end
 
       def prepare_client_zero_script
         cmd = [local_mode_command, *chef_client_args, '--logfile c:\chef\tk.log'].join(" ")
