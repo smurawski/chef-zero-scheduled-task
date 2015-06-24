@@ -81,6 +81,7 @@ module Kitchen
           } while ($state.status -like 'Running')
           $host.ui.WriteLine('')
           get-content c:/chef/tk.log -readcount 0
+          $host.setshouldexit((gc c:/chef/exit_code.txt -readcount 0).trim())
         EOH
       end
 
@@ -98,9 +99,10 @@ module Kitchen
           $cmd_path = "#{remote_path_join(config[:root_path], 'chef-client-script.ps1')}"
           $cmd_to_eval = gc $cmd_path | out-string
           $cmd = $executioncontext.invokecommand.expandstring($cmd_to_eval)
+          $post_cmd = '$LastExitCode | out-file c:/chef/exit_code.txt'
           $cmd_folder = split-path $cmd_path
           if (-not (test-path $cmd_folder)) {$null = mkdir $cmd_folder}
-          $pre_cmd, $cmd | out-file $cmd_path
+          $pre_cmd, $cmd, $post_cmd | out-file $cmd_path
         EOH
       end
 
