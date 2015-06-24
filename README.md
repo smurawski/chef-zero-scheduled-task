@@ -1,8 +1,6 @@
 [![Gem Version](https://badge.fury.io/rb/chef-zero-scheduled-task.svg)](http://badge.fury.io/rb/chef-zero-scheduled-task)
 # Chef::Zero::Scheduled::Task
 
-TODO: Write a gem description
-
 ## Installation
 
 Add this line to your application's Gemfile:
@@ -26,6 +24,11 @@ In the .kitchen.yml
 provisioner:
   name: chef_zero_scheduled_task
 ```
+
+This provisioner uses all the same configuration options as the native chef-zero provisioner, as well as:
+
+* task_username - user account the scheduled task should run under.  (defaults to the username used for the transport)
+* task_password - password to use to create the scheduled task.  (defaults to the password used for the transport)
 
 ## Contributing
 
