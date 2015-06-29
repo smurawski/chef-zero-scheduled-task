@@ -69,19 +69,27 @@ module Kitchen
 
       def run_scheduled_task_command
         <<-EOH
-          if (test-path 'c:/chef/tk.log') {
-            remove-item c:/chef/tk.log -force
-          }
+        try {
+          $npipeServer = new-object System.IO.Pipes.NamedPipeServerStream( 'task', [System.IO.Pipes.PipeDirection]::In)
+          $pipeReader = new-object System.IO.StreamReader($npipeServer)
           schtasks /run /tn "chef-tk"
-          $host.ui.WriteLine('Running scheduled task chef-tk.')
-          do {
-            $host.ui.WriteLine('  The task is still running.')
-            start-sleep -seconds 5
-            $state = schtasks /query /tn chef-tk /fo csv /v | convertfrom-csv
-          } while ($state.status -like 'Running')
-          $host.ui.WriteLine('')
-          get-content c:/chef/tk.log -readcount 0
-          $host.setshouldexit((gc c:/chef/exit_code.txt -readcount 0).trim())
+          $npipeserver.waitforconnection()
+          $host.ui.writeline('Connected to the scheduled task.')
+          while ($npipeserver.IsConnected) { 
+            $output = $pipereader.ReadLine()
+            if ($output -like 'SCHEDULED_TASK_DONE:*') {
+              $exit_code = ($output -replace 'SCHEDULED_TASK_DONE:').trim()
+            }
+            else {
+              $host.ui.WriteLine($output)
+            }
+          }
+        }
+        finally {
+          $pipereader.dispose()
+          $npipeserver.dispose()
+          $host.setshouldexit($exit_code)
+        }
         EOH
       end
 
@@ -95,19 +103,22 @@ module Kitchen
 
       def scheduled_task_command
         <<-EOH
-          $pre_cmd = '$env:temp = "' + $env:temp + '"'
+          $pre_cmd = '$env:temp = "' + $env:temp + '"' + ";"
+          $pre_cmd += 'start-sleep -seconds 5;'
+          $pre_cmd += '$npipeClient = new-object System.IO.Pipes.NamedPipeClientStream( $env:ComputerName,'
+          $pre_cmd += '"task", [System.IO.Pipes.PipeDirection]::Out); $npipeclient.connect();'
+          $pre_cmd += '$pipeWriter = new-object System.IO.StreamWriter($npipeClient);'
+          $pre_cmd += '$pipeWriter.AutoFlush = $true'
           $cmd_path = "#{remote_path_join(config[:root_path], 'chef-client-script.ps1')}"
-          $cmd_to_eval = gc $cmd_path | out-string
-          $cmd = $executioncontext.invokecommand.expandstring($cmd_to_eval)
-          $post_cmd = '$LastExitCode | out-file c:/chef/exit_code.txt'
-          $cmd_folder = split-path $cmd_path
-          if (-not (test-path $cmd_folder)) {$null = mkdir $cmd_folder}
-          $pre_cmd, $cmd, $post_cmd | out-file $cmd_path
+          $cmd_to_eval = gc $cmd_path -readcount 0 | out-string
+          $cmd = $executioncontext.invokecommand.expandstring($cmd_to_eval) -replace '\r\n'
+          $cmd = "$cmd | " + '% {} {$pipewriter.writeline($_)} {$pipewriter.writeline("SCHEDULED_TASK_DONE: $LastExitCode");$pipewriter.dispose();$npipeclient.dispose()}'
+          $pre_cmd, $cmd | out-file $cmd_path
         EOH
       end
 
       def prepare_client_zero_script
-        cmd = [local_mode_command, *chef_client_args, '--logfile c:\chef\tk.log'].join(' ')
+        cmd = [local_mode_command, *chef_client_args].join(' ')
         File.open(File.join(sandbox_path, 'chef-client-script.ps1'), 'w') do |file|
           file.write(cmd)
         end
