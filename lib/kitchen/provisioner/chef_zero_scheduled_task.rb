@@ -97,7 +97,7 @@ module Kitchen
         <<-EOH
           $cmd_path = "#{remote_path_join(config[:root_path], 'chef-client-script.ps1')}"
           $cmd_line = $executioncontext.invokecommand.expandstring("powershell -executionpolicy unrestricted -File $cmd_path")
-          schtasks /create /tn "chef-tk" /ru #{config[:task_username]} /rp #{config[:task_password]} /sc daily /st 00:00 /f /tr "$cmd_line"
+          schtasks /create /tn "chef-tk" /ru '#{config[:task_username]}' /rp '#{config[:task_password]}' /sc daily /st 00:00 /f /tr "$cmd_line"
         EOH
       end
 
