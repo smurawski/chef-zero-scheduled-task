@@ -55,14 +55,21 @@ module Kitchen
       private
 
       def resolve_username_and_password
-        unless config[:task_username] && config[:task_password]
-          local_state_file = @instance.diagnose[:state_file]
+        local_state_file = @instance.diagnose[:state_file]
+
+        unless config[:task_password]
           if local_state_file.key?(:password)
-            config[:task_username] = local_state_file[:username]
             config[:task_password] = local_state_file[:password]
           else
-            config[:task_username] = @instance.transport[:username]
             config[:task_password] = @instance.transport[:password]
+          end
+        end
+
+        unless config[:task_username
+          if local_state_file.key?(:username)
+            config[:task_username] = local_state_file[:username]
+          else
+            config[:task_username] = @instance.transport[:username]
           end
         end
       end
