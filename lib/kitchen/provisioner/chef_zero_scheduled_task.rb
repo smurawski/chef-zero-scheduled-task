@@ -65,7 +65,7 @@ module Kitchen
           end
         end
 
-        unless config[:task_username
+        unless config[:task_username]
           if local_state_file.key?(:username)
             config[:task_username] = local_state_file[:username]
           else
