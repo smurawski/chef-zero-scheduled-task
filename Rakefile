@@ -9,44 +9,59 @@ Rake::TestTask.new(:unit) do |t|
   t.verbose = true
 end
 
+require "cucumber"
+require "cucumber/rake/task"
+Cucumber::Rake::Task.new(:features) do |t|
+  t.cucumber_opts = ["features", "-x", "--format progress", "--no-color"]
+end
+
 desc "Run all test suites"
-task :test => [:unit]
+task :test => [:unit] #[:unit, :features]
 
 desc "Display LOC stats"
 task :stats do
   puts "\n## Production Code Stats"
-  sh "countloc -r lib"
+  sh "countloc -r lib/kitchen lib/kitchen.rb"
   puts "\n## Test Code Stats"
-  sh "countloc -r spec"
+  sh "countloc -r spec features"
 end
 
 require "finstyle"
 require "rubocop/rake_task"
 RuboCop::RakeTask.new(:style) do |task|
-  task.options << "--display-cop-names"
-  task.options << "--lint"
-  task.options << '--config' << '.rubocop.yml'
-  task.patterns = ['lib/**/*.rb']
+  task.options += ["--display-cop-names", "--no-color"]
 end
 
-require "cane/rake_task"
-desc "Run cane to check quality metrics"
-Cane::RakeTask.new do |cane|
-  cane.canefile = "./.cane"
-end
+if RUBY_ENGINE != "jruby"
+  require "cane/rake_task"
+  desc "Run cane to check quality metrics"
+  Cane::RakeTask.new do |cane|
+    cane.canefile = "./.cane"
+  end
 
-desc "Run all quality tasks"
-task :quality => [:cane, :style, :stats]
+  desc "Run all quality tasks"
+  task :quality => [:cane, :style, :stats]
+else
+  desc "Run all quality tasks"
+  task :quality => [:style, :stats]
+end
 
 require "yard"
 YARD::Rake::YardocTask.new
 
-desc "Generate gem dependency graph"
-task :viz do
-  Bundler.with_clean_env do
-    sh "bundle viz --without test development guard " \
-      "--requirements --version"
+task :default => [:test, :quality]
+
+task :deploy_over_dk do
+  if RUBY_PLATFORM =~ /mswin|mingw|windows/
+    dk_path = File.join(ENV["SYSTEMDRIVE"], "opscode", "chefdk")
+  else
+    dk_path = "/opt/chefdk"
   end
+
+  dk_app_path = File.join(dk_path, %w[embedded apps test-kitchen])
+  FileUtils.copy_entry(File.dirname(__FILE__), dk_app_path)
+  git_dir = File.join(dk_app_path, ".git")
+  FileUtils.rm_rf(git_dir) if Dir.exist?(git_dir)
 end
 
-task :default => [:test, :quality]
+task :dk_install => [:deploy_over_dk, :install]
