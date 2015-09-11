@@ -16,7 +16,7 @@ Cucumber::Rake::Task.new(:features) do |t|
 end
 
 desc "Run all test suites"
-task :test => [:unit] #[:unit, :features]
+task :test => [:unit] # [:unit, :features]
 
 desc "Display LOC stats"
 task :stats do

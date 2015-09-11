@@ -37,7 +37,6 @@ module Kitchen
       end
 
       def init_command
-        resolve_username_and_password
         wrap_shell_code(setup_scheduled_task_command)
       end
 
@@ -52,12 +51,13 @@ module Kitchen
         wrap_shell_code(run_scheduled_task_command)
       end
 
-      #private
+      # private
 
-      def local_state_file 
+      def local_state_file
         @local_state_file ||= @instance.diagnose[:state_file]
       end
-      def resolve_username
+
+      def task_username
         if config[:task_username]
           config[:task_username]
         else
@@ -68,20 +68,15 @@ module Kitchen
           end
         end
       end
-      
-      def resolve_password
+
+      def task_password
         unless config[:task_password]
           if local_state_file.key?(:password)
-             local_state_file[:password]
+            local_state_file[:password]
           else
             @instance.transport[:password]
           end
         end
-      end
-
-      def resolve_username_and_password
-        @task_username = resolve_username
-        @task_password = resolve_password
       end
 
       def run_scheduled_task_command
@@ -107,17 +102,26 @@ module Kitchen
         EOH
       end
 
+      def new_scheduled_task_command
+        "schtasks /create /tn 'chef-tk' " \
+        "/ru '#{task_username}' /rp '#{task_password}' " \
+        "/sc daily /st 00:00 /f "
+      end
+
+      def new_scheduled_task_command_line_ps
+        "/tr $executioncontext.invokecommand.expandstring(" \
+        '"powershell -executionpolicy unrestricted -File '
+      end
+
       def setup_scheduled_task_command
-        schtasks_cmd = 'schtasks /create /tn "chef-tk"'
-        schtasks_user = "/ru '#{@task_username}'" /
-          " /rp '#{@task_password}'"
-        schtasks_timing = "/sc daily /st 00:00 /f"
-        <<-EOH
-          $cmd_path = "#{remote_path_join(config[:root_path], "chef-client-script.ps1")}"
-          $cmd_line = $executioncontext.invokecommand.expandstring(
-            "powershell -executionpolicy unrestricted -File $cmd_path")
-          #{schtasks_cmd} #{schtasks_user} #{schtasks_timing} /tr "$cmd_line"
-        EOH
+        new_scheduled_task_command \
+          new_schedule_task_command_line_ps \
+            remote_chef_client_script
+      end
+
+      def remote_chef_client_script
+        @remote_script_path ||= remote_path_join(
+          config[:root_path], "chef-client-script.ps1")
       end
 
       def scheduled_task_command
@@ -129,7 +133,7 @@ module Kitchen
           $pre_cmd += '$npipeclient.connect();'
           $pre_cmd += '$pipeWriter = new-object System.IO.StreamWriter($npipeClient);'
           $pre_cmd += '$pipeWriter.AutoFlush = $true'
-          $cmd_path = "#{remote_path_join(config[:root_path], "chef-client-script.ps1")}"
+          $cmd_path = "#{remote_chef_client_script}"
           $cmd_to_eval = gc $cmd_path -readcount 0 | out-string
           $cmd = $executioncontext.invokecommand.expandstring($cmd_to_eval) -replace '\r\n'
           $cmd = "$cmd | " +
