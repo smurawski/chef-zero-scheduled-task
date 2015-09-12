@@ -33,18 +33,17 @@ module Kitchen
       def create_sandbox
         super
         return unless windows_os?
+        info("Creating a script to run chef client.")
         prepare_client_zero_script
+      end
+      
+      def prepare_command
+        wrap_shell_code('$env:temp = "$env:temp"')
       end
 
       def init_command
+        info("Creating the scheduled task.")
         wrap_shell_code(setup_scheduled_task_command)
-      end
-
-      # assuming a version of Chef with local mode.
-      def prepare_command
-        return unless windows_os?
-        info("Creating a script to run chef client.")
-        wrap_shell_code(scheduled_task_command)
       end
 
       def run_command
@@ -114,9 +113,9 @@ module Kitchen
       end
 
       def setup_scheduled_task_command
-        new_scheduled_task_command \
-          new_schedule_task_command_line_ps \
-            remote_chef_client_script
+        new_scheduled_task_command +
+          new_scheduled_task_command_line_ps +
+          remote_chef_client_script
       end
 
       def remote_chef_client_script
@@ -124,30 +123,31 @@ module Kitchen
           config[:root_path], "chef-client-script.ps1")
       end
 
-      def scheduled_task_command
+      def scheduled_task_command_script
         <<-EOH
-          $pre_cmd = '$env:temp = "' + $env:temp + '"' + ";"
-          $pre_cmd += 'start-sleep -seconds 5;'
-          $pre_cmd += '$npipeClient = new-object System.IO.Pipes.NamedPipeClientStream('
-          $pre_cmd += '$env:ComputerName,"task", [System.IO.Pipes.PipeDirection]::Out);'
-          $pre_cmd += '$npipeclient.connect();'
-          $pre_cmd += '$pipeWriter = new-object System.IO.StreamWriter($npipeClient);'
-          $pre_cmd += '$pipeWriter.AutoFlush = $true'
-          $cmd_path = "#{remote_chef_client_script}"
-          $cmd_to_eval = gc $cmd_path -readcount 0 | out-string
-          $cmd = $executioncontext.invokecommand.expandstring($cmd_to_eval) -replace '\r\n'
-          $cmd = "$cmd | " +
-            '% {} {$pipewriter.writeline($_)} {$pipewriter.writeline("SCHEDULED_TASK_DONE:' +
-            '$LastExitCode");$pipewriter.dispose();$npipeclient.dispose()}'
-          $pre_cmd, $cmd | out-file $cmd_path
+        start-sleep -seconds 5;
+        $npipeClient = new-object System.IO.Pipes.NamedPipeClientStream(
+        $env:ComputerName, 'task', [System.IO.Pipes.PipeDirection]::Out);
+        $npipeclient.connect();
+        $pipeWriter = new-object System.IO.StreamWriter($npipeClient);
+        $pipeWriter.AutoFlush = $true;
+        #{client_zero_command} |
+          foreach-object {} {$pipewriter.writeline($_)} {
+            $pipewriter.writeline("SCHEDULED_TASK_DONE: $LastExitCode");
+            $pipewriter.dispose();
+            $npipeclient.dispose()
+          }
         EOH
       end
 
       def prepare_client_zero_script
-        cmd = [local_mode_command, *chef_client_args].join(" ")
         File.open(File.join(sandbox_path, "chef-client-script.ps1"), "w") do |file|
-          file.write(cmd)
+          file.write(outdent!(scheduled_task_command_script))
         end
+      end
+
+      def client_zero_command
+        [local_mode_command, *chef_client_args].join(" ")
       end
 
       def chef_client_args
