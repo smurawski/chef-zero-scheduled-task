@@ -33,31 +33,30 @@ module Kitchen
       def create_sandbox
         super
         return unless windows_os?
+        info("Creating a script to run chef client.")
         prepare_client_zero_script
       end
 
-      def init_command
-        resolve_username_and_password
-        wrap_shell_code(setup_scheduled_task_command)
+      def prepare_command
+        wrap_shell_code('$env:temp = "$env:temp"')
       end
 
-      # assuming a version of Chef with local mode.
-      def prepare_command
-        return unless windows_os?
-        info("Creating a script to run chef client.")
-        wrap_shell_code(scheduled_task_command)
+      def init_command
+        info("Creating the scheduled task.")
+        wrap_shell_code(setup_scheduled_task_command)
       end
 
       def run_command
         wrap_shell_code(run_scheduled_task_command)
       end
 
-      #private
+      # private
 
-      def local_state_file 
+      def local_state_file
         @local_state_file ||= @instance.diagnose[:state_file]
       end
-      def resolve_username
+
+      def task_username
         if config[:task_username]
           config[:task_username]
         else
@@ -68,20 +67,15 @@ module Kitchen
           end
         end
       end
-      
-      def resolve_password
+
+      def task_password
         unless config[:task_password]
           if local_state_file.key?(:password)
-             local_state_file[:password]
+            local_state_file[:password]
           else
             @instance.transport[:password]
           end
         end
-      end
-
-      def resolve_username_and_password
-        @task_username = resolve_username
-        @task_password = resolve_password
       end
 
       def run_scheduled_task_command
@@ -107,43 +101,54 @@ module Kitchen
         EOH
       end
 
-      def setup_scheduled_task_command
-        schtasks_cmd = 'schtasks /create /tn "chef-tk"'
-        schtasks_user = "/ru '#{@task_username}'" /
-          " /rp '#{@task_password}'"
-        schtasks_timing = "/sc daily /st 00:00 /f"
-        <<-EOH
-          $cmd_path = "#{remote_path_join(config[:root_path], "chef-client-script.ps1")}"
-          $cmd_line = $executioncontext.invokecommand.expandstring(
-            "powershell -executionpolicy unrestricted -File $cmd_path")
-          #{schtasks_cmd} #{schtasks_user} #{schtasks_timing} /tr "$cmd_line"
-        EOH
+      def new_scheduled_task_command
+        "schtasks /create /tn 'chef-tk' " \
+        "/ru '#{task_username}' /rp '#{task_password}' " \
+        "/sc daily /st 00:00 /f "
       end
 
-      def scheduled_task_command
+      def new_scheduled_task_command_line_ps
+        "/tr $executioncontext.invokecommand.expandstring(" \
+        '"powershell -executionpolicy unrestricted -File '
+      end
+
+      def setup_scheduled_task_command
+        new_scheduled_task_command +
+          new_scheduled_task_command_line_ps +
+          remote_chef_client_script +
+          '")'
+      end
+
+      def remote_chef_client_script
+        @remote_script_path ||= remote_path_join(
+          config[:root_path], "chef-client-script.ps1")
+      end
+
+      def scheduled_task_command_script
         <<-EOH
-          $pre_cmd = '$env:temp = "' + $env:temp + '"' + ";"
-          $pre_cmd += 'start-sleep -seconds 5;'
-          $pre_cmd += '$npipeClient = new-object System.IO.Pipes.NamedPipeClientStream('
-          $pre_cmd += '$env:ComputerName,"task", [System.IO.Pipes.PipeDirection]::Out);'
-          $pre_cmd += '$npipeclient.connect();'
-          $pre_cmd += '$pipeWriter = new-object System.IO.StreamWriter($npipeClient);'
-          $pre_cmd += '$pipeWriter.AutoFlush = $true'
-          $cmd_path = "#{remote_path_join(config[:root_path], "chef-client-script.ps1")}"
-          $cmd_to_eval = gc $cmd_path -readcount 0 | out-string
-          $cmd = $executioncontext.invokecommand.expandstring($cmd_to_eval) -replace '\r\n'
-          $cmd = "$cmd | " +
-            '% {} {$pipewriter.writeline($_)} {$pipewriter.writeline("SCHEDULED_TASK_DONE:' +
-            '$LastExitCode");$pipewriter.dispose();$npipeclient.dispose()}'
-          $pre_cmd, $cmd | out-file $cmd_path
+        start-sleep -seconds 5;
+        $npipeClient = new-object System.IO.Pipes.NamedPipeClientStream(
+        $env:ComputerName, 'task', [System.IO.Pipes.PipeDirection]::Out);
+        $npipeclient.connect();
+        $pipeWriter = new-object System.IO.StreamWriter($npipeClient);
+        $pipeWriter.AutoFlush = $true;
+        #{client_zero_command} |
+          foreach-object {} {$pipewriter.writeline($_)} {
+            $pipewriter.writeline("SCHEDULED_TASK_DONE: $LastExitCode");
+            $pipewriter.dispose();
+            $npipeclient.dispose()
+          }
         EOH
       end
 
       def prepare_client_zero_script
-        cmd = [local_mode_command, *chef_client_args].join(" ")
         File.open(File.join(sandbox_path, "chef-client-script.ps1"), "w") do |file|
-          file.write(cmd)
+          file.write(Util.outdent!(scheduled_task_command_script))
         end
+      end
+
+      def client_zero_command
+        [local_mode_command, *chef_client_args].join(" ")
       end
 
       def chef_client_args
