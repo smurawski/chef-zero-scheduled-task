@@ -38,16 +38,28 @@ module Kitchen
       end
 
       def prepare_command
-        wrap_shell_code('$env:temp = "$env:temp"')
+        if windows_os?
+          wrap_shell_code('$env:temp = "$env:temp"')
+        else
+          super
+        end
       end
 
       def init_command
-        info("Creating the scheduled task.")
-        wrap_shell_code(setup_scheduled_task_command)
+        if windows_os?
+          info("Creating the scheduled task.")
+          wrap_shell_code(setup_scheduled_task_command)
+        else
+          super
+        end
       end
 
       def run_command
-        wrap_shell_code(run_scheduled_task_command)
+        if windows_os?
+          wrap_shell_code(run_scheduled_task_command)
+        else
+          super
+        end
       end
 
       # private
