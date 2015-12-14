@@ -39,7 +39,12 @@ module Kitchen
 
       def prepare_command
         if windows_os?
-          wrap_shell_code('$env:temp = "$env:temp"')
+          debug("Serializing $env:temp")
+          wrap_shell_code(<<-EOH
+            "`$env:temp = '$env:temp'" |
+                out-file $env:temp/kitchen/env.ps1
+          EOH
+          )
         else
           super
         end
@@ -116,7 +121,7 @@ module Kitchen
       def new_scheduled_task_command
         "schtasks /create /tn 'chef-tk' " \
         "/ru '#{task_username}' /rp '#{task_password}' " \
-        "/sc daily /st 00:00 /f "
+        "/sc daily /st 00:00 /rl HIGHEST /f "
       end
 
       def new_scheduled_task_command_line_ps
@@ -138,6 +143,7 @@ module Kitchen
 
       def scheduled_task_command_script
         <<-EOH
+        . $psscriptroot/env.ps1;
         start-sleep -seconds 5;
         $npipeClient = new-object System.IO.Pipes.NamedPipeClientStream(
         $env:ComputerName, 'task', [System.IO.Pipes.PipeDirection]::Out);
