@@ -44,11 +44,8 @@ module Kitchen
 
       def init_command
         if windows_os?
-          info("Creating a script to run chef client.")
-          prepare_client_zero_script
           info("Creating the scheduled task.")
-          init_command_script = "#{super}\n#{setup_scheduled_task_command}"
-          wrap_shell_code(init_command_script)
+          wrap_shell_code("#{super}\n#{setup_scheduled_task_command}")
         else
           super
         end
@@ -56,7 +53,10 @@ module Kitchen
 
       def run_command
         if windows_os?
-          wrap_shell_code(run_scheduled_task_command)
+          script = "$script = @'\n#{scheduled_task_command_script}\n'@\n" \
+          "\n$Script | out-file \"$env:temp/kitchen/chef-client-script.ps1\"" \
+          "\n#{run_scheduled_task_command}"
+          wrap_shell_code(script)
         else
           super
         end
