@@ -30,13 +30,6 @@ module Kitchen
 
       default_config :task_password
 
-      def create_sandbox
-        super
-        return unless windows_os?
-        info("Creating a script to run chef client.")
-        prepare_client_zero_script
-      end
-
       def prepare_command
         if windows_os?
           debug("Serializing $env:temp")
@@ -45,15 +38,17 @@ module Kitchen
                 out-file $env:temp/kitchen/env.ps1
           EOH
           )
-        else
-          super
         end
+        super
       end
 
       def init_command
         if windows_os?
+          info("Creating a script to run chef client.")
+          prepare_client_zero_script
           info("Creating the scheduled task.")
-          wrap_shell_code(setup_scheduled_task_command)
+          init_command_script = "#{super}\n#{setup_scheduled_task_command}"
+          wrap_shell_code(init_command_script)
         else
           super
         end
