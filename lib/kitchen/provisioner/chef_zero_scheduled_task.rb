@@ -30,18 +30,6 @@ module Kitchen
 
       default_config :task_password
 
-      def prepare_command
-        if windows_os?
-          debug("Serializing $env:temp")
-          wrap_shell_code(<<-EOH
-            "`$env:temp = '$env:temp'" |
-                out-file $env:temp/kitchen/env.ps1
-          EOH
-          )
-        end
-        super
-      end
-
       def init_command
         if windows_os?
           info("Creating the scheduled task.")
@@ -54,7 +42,7 @@ module Kitchen
       def run_command
         if windows_os?
           script = "$script = @'\n#{scheduled_task_command_script}\n'@\n" \
-          "\n$Script | out-file \"$env:temp/kitchen/chef-client-script.ps1\"" \
+          "\n$ExecutionContext.InvokeCommand.ExpandString($Script) | out-file \"$env:temp/kitchen/chef-client-script.ps1\"" \
           "\n#{run_scheduled_task_command}"
           wrap_shell_code(script)
         else
@@ -92,24 +80,25 @@ module Kitchen
 
       def run_scheduled_task_command
         <<-EOH
-        try {
-          $npipeServer = new-object System.IO.Pipes.NamedPipeServerStream(
-            'task', [System.IO.Pipes.PipeDirection]::In)
-          $pipeReader = new-object System.IO.StreamReader($npipeServer)
-          schtasks /run /tn "chef-tk"
-          $npipeserver.waitforconnection()
-          $host.ui.writeline('Connected to the scheduled task.')
-          while ($npipeserver.IsConnected) {
-            $output = $pipereader.ReadLine()
-            if ($output -like 'SCHEDULED_TASK_DONE:*') {
-              $exit_code = ($output -replace 'SCHEDULED_TASK_DONE:').trim()
-            }
-            else { $host.ui.WriteLine($output) } } }
-        finally {
-          $pipereader.dispose()
-          $npipeserver.dispose()
-          $host.setshouldexit($exit_code)
-        }
+try {
+  Add-Type -AssemblyName System.Core
+  $npipeServer = new-object System.IO.Pipes.NamedPipeServerStream('task', 
+    [System.IO.Pipes.PipeDirection]::In)
+  $pipeReader = new-object System.IO.StreamReader($npipeServer)
+  schtasks /run /tn "chef-tk"
+  $npipeserver.waitforconnection()
+  $host.ui.writeline('Connected to the scheduled task.')
+  while ($npipeserver.IsConnected) {
+    $output = $pipereader.ReadLine()
+    if ($output -like 'SCHEDULED_TASK_DONE:*') {
+      $exit_code = ($output -replace 'SCHEDULED_TASK_DONE:').trim()
+    }
+    else { $host.ui.WriteLine($output) } } }
+finally {
+  $pipereader.dispose()
+  $npipeserver.dispose()
+  $host.setshouldexit($exit_code)
+}
         EOH
       end
 
@@ -138,20 +127,20 @@ module Kitchen
 
       def scheduled_task_command_script
         <<-EOH
-        . $psscriptroot/env.ps1;
-        start-sleep -seconds 5;
-        $npipeClient = new-object System.IO.Pipes.NamedPipeClientStream(
-        $env:ComputerName, 'task', [System.IO.Pipes.PipeDirection]::Out);
-        $npipeclient.connect();
-        $pipeWriter = new-object System.IO.StreamWriter($npipeClient);
-        $pipeWriter.AutoFlush = $true;
-        #{client_zero_command} |
-          foreach-object {} {$pipewriter.writeline($_)} {
-            $pipewriter.writeline("SCHEDULED_TASK_DONE: $LastExitCode");
-            $pipewriter.dispose();
-            $npipeclient.dispose()
-          }
-        EOH
+Add-Type -AssemblyName System.Core
+start-sleep -seconds 5;
+`$npipeClient = new-object System.IO.Pipes.NamedPipeClientStream(`$env:ComputerName,
+  `'task`', [System.IO.Pipes.PipeDirection]::Out);
+`$npipeclient.connect();
+`$pipeWriter = new-object System.IO.StreamWriter(`$npipeClient);
+`$pipeWriter.AutoFlush = `$true;
+#{client_zero_command} |
+  foreach-object {} {`$pipewriter.writeline(`$_)} {
+    `$pipewriter.writeline(`"SCHEDULED_TASK_DONE: `$LastExitCode`");
+    `$pipewriter.dispose();
+    `$npipeclient.dispose()
+  }
+EOH
       end
 
       def prepare_client_zero_script
