@@ -136,7 +136,7 @@ start-sleep -seconds 5;
 `$pipeWriter.AutoFlush = `$true;
 #{client_zero_command} |
   foreach-object {} {`$pipewriter.writeline(`$_)} {
-    `$pipewriter.writeline(`"SCHEDULED_TASK_DONE: `$LastExitCode`");
+    `$pipewriter.writeline("SCHEDULED_TASK_DONE: `$LastExitCode");
     `$pipewriter.dispose();
     `$npipeclient.dispose()
   }
