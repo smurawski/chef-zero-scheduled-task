@@ -30,19 +30,23 @@ module Kitchen
 
       default_config :task_password
 
-      def init_command
+      def create_sandbox
+        super
         if windows_os?
-          info("Creating the scheduled task.")
-          wrap_shell_code("#{super}\n#{setup_scheduled_task_command}")
-        else
-          super
+          info("Preparing the chef-client task script")
+          prepare_client_zero_script
+          paths = config[:cookbook_files_glob].split(',') << 'chef-client-script.ps1'
+          config[:cookbook_files_glob] = paths.join(',')
         end
       end
 
       def run_command
         if windows_os?
-          script = "$script = @'\n#{scheduled_task_command_script}\n'@\n" \
-          "\n$ExecutionContext.InvokeCommand.ExpandString($Script) | out-file \"$env:temp/kitchen/chef-client-script.ps1\"" \
+          script = "#{setup_scheduled_task_command}\n" \
+          "$ScriptPath = (resolve-path $env:temp/kitchen/chef-client-script.ps1).providerpath\n" \
+          "$script = get-content -readcount 0 $ScriptPath\n" \
+          "$EnvHeader = \"`$env:Temp = '$env:temp';\"\n" \
+          "\n($EnvHeader, $Script) | out-file $ScriptPath" \
           "\n#{run_scheduled_task_command}"
           wrap_shell_code(script)
         else
@@ -81,7 +85,8 @@ module Kitchen
       def run_scheduled_task_command
         <<-EOH
 try {
-  Add-Type -AssemblyName System.Core
+  '#{client_zero_command}' | out-file $env:temp/kitchen/chef-client-command.txt
+  Add-Type -AssemblyName System.Core;
   $npipeServer = new-object System.IO.Pipes.NamedPipeServerStream('task', 
     [System.IO.Pipes.PipeDirection]::In)
   $pipeReader = new-object System.IO.StreamReader($npipeServer)
@@ -127,18 +132,18 @@ finally {
 
       def scheduled_task_command_script
         <<-EOH
-Add-Type -AssemblyName System.Core
+Add-Type -AssemblyName System.Core;
 start-sleep -seconds 5;
-`$npipeClient = new-object System.IO.Pipes.NamedPipeClientStream(`$env:ComputerName,
-  `'task`', [System.IO.Pipes.PipeDirection]::Out);
-`$npipeclient.connect();
-`$pipeWriter = new-object System.IO.StreamWriter(`$npipeClient);
-`$pipeWriter.AutoFlush = `$true;
-#{client_zero_command} |
-  foreach-object {} {`$pipewriter.writeline(`$_)} {
-    `$pipewriter.writeline("SCHEDULED_TASK_DONE: `$LastExitCode");
-    `$pipewriter.dispose();
-    `$npipeclient.dispose()
+$npipeClient = new-object System.IO.Pipes.NamedPipeClientStream($env:ComputerName,
+  'task', [System.IO.Pipes.PipeDirection]::Out);
+$npipeclient.connect();
+$pipeWriter = new-object System.IO.StreamWriter($npipeClient);
+$pipeWriter.AutoFlush = $true;
+iex (gc -read 0 $env:temp/kitchen/chef-client-command.txt | out-string) |
+  foreach-object {} {$pipewriter.writeline($_)} {
+    $pipewriter.writeline("SCHEDULED_TASK_DONE: $LastExitCode");
+    $pipewriter.dispose();
+    $npipeclient.dispose()
   }
 EOH
       end
