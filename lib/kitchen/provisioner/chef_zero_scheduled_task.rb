@@ -85,7 +85,7 @@ try {
   $npipeServer = new-object System.IO.Pipes.NamedPipeServerStream('task', 
     [System.IO.Pipes.PipeDirection]::In)
   $pipeReader = new-object System.IO.StreamReader($npipeServer)
-  schtasks /run /tn "chef-tk"
+  schtasks /run /tn "chef-tk" /i
   $npipeserver.waitforconnection()
   $host.ui.writeline('Connected to the scheduled task.')
   while ($npipeserver.IsConnected) {
