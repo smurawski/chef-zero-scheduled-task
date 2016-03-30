@@ -64,7 +64,7 @@ describe Kitchen::Provisioner::ChefZeroScheduledTask do
       provisioner.
         new_scheduled_task_command.
         must_match("schtasks /create /tn 'chef-tk' /ru " \
-        "'Administrator' /rp 'P@ssw0rd' /sc daily /st 00:00 /f ")
+        "'Administrator' /rp 'P@ssw0rd' /sc daily /st 00:00 /rl HIGHEST /f ")
     end
   end
 

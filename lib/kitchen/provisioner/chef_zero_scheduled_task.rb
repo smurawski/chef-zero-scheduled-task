@@ -41,9 +41,12 @@ module Kitchen
 
       def run_command
         if windows_os?
-          script = "$script = @'\n#{scheduled_task_command_script}\n'@\n" \
-          "\n$ExecutionContext.InvokeCommand.ExpandString($Script) | out-file \"$env:temp/kitchen/chef-client-script.ps1\"" \
-          "\n#{run_scheduled_task_command}"
+          script = <<-EOH
+            $script = @'\n#{scheduled_task_command_script}\n'@
+            $ExecutionContext.InvokeCommand.ExpandString($Script) |
+              out-file "$env:temp/kitchen/chef-client-script.ps1"
+            #{run_scheduled_task_command}
+          EOH
           wrap_shell_code(script)
         else
           super
@@ -78,11 +81,12 @@ module Kitchen
         end
       end
 
+      # rubocop:disable MethodLength
       def run_scheduled_task_command
         <<-EOH
 try {
   Add-Type -AssemblyName System.Core
-  $npipeServer = new-object System.IO.Pipes.NamedPipeServerStream('task', 
+  $npipeServer = new-object System.IO.Pipes.NamedPipeServerStream('task',
     [System.IO.Pipes.PipeDirection]::In)
   $pipeReader = new-object System.IO.StreamReader($npipeServer)
   schtasks /run /tn "chef-tk" /i
@@ -101,6 +105,7 @@ finally {
 }
         EOH
       end
+      # rubocop:enable MethodLength
 
       def new_scheduled_task_command
         "schtasks /create /tn 'chef-tk' " \
