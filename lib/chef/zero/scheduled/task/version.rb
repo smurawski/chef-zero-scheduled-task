@@ -2,7 +2,7 @@ module Chef
   module Zero
     module Scheduled
       module Task
-        VERSION = "0.0.12"
+        VERSION = "0.1.0"
       end
     end
   end
